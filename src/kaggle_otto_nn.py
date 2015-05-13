@@ -1,0 +1,134 @@
+from __future__ import absolute_import
+from __future__ import print_function
+
+import numpy as np
+import pandas as pd
+import pickle
+
+from keras.models import Sequential
+from keras.optimizers import SGD, Adam
+from keras.layers.core import Dense, Dropout, Activation
+from keras.layers.normalization import BatchNormalization
+from keras.layers.advanced_activations import PReLU
+from keras.utils import np_utils, generic_utils
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
+
+'''
+    This demonstrates how to reach a score of 0.4890 (local validation)
+    on the Kaggle Otto challenge, with a deep net using Keras.
+
+    Compatible Python 2.7-3.4 
+
+    Recommended to run on GPU: 
+        Command: THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python kaggle_otto_nn.py
+        On EC2 g2.2xlarge instance: 19s/epoch. 6-7 minutes total training time.
+
+    Best validation score at epoch 21: 0.4881 
+
+    Try it at home:
+        - with/without BatchNormalization (BatchNormalization helps!)
+        - with ReLU or with PReLU (PReLU helps!)
+        - with smaller layers, largers layers
+        - with more layers, less layers
+        - with different optimizers (SGD+momentum+decay is probably better than Adam!)
+'''
+
+np.random.seed(13251) # for reproducibility
+
+def load_data(path, train=True):
+    df = pd.read_csv(path)
+    X = df.values.copy()
+    if train:
+        np.random.shuffle(X) # https://youtu.be/uyUXoap67N8
+        X, labels = X[:, 1:-1].astype(np.float32), X[:, -1]
+        return X, labels
+    else:
+        X, ids = X[:, 1:].astype(np.float32), X[:, 0].astype(str)
+        return X, ids
+
+def preprocess_data(X, scaler=None):
+    # if not scaler:
+    #     scaler = StandardScaler()
+    #     scaler.fit(X)
+    # X = scaler.transform(X)
+
+    normalized_X = X/np.tile(X.sum(axis=1).reshape(X.shape[0],1), (1, X.shape[1]))
+    log_transformed_X = np.log(X+1.0)
+    X = log_transformed_X # np.hstack((X, log_transformed_X, normalized_X))
+    return X, scaler
+
+def preprocess_labels(y, encoder=None, categorical=True):
+    if not encoder:
+        encoder = LabelEncoder()
+        encoder.fit(labels)
+    y = encoder.transform(labels).astype(np.int32)
+    if categorical:
+        y = np_utils.to_categorical(y)
+    return y, encoder
+
+def make_submission(y_prob, ids, encoder, fname):
+    with open(fname, 'w') as f:
+        f.write('id,')
+        f.write(','.join([str(i) for i in encoder.classes_]))
+        f.write('\n')
+        for i, probs in zip(ids, y_prob):
+            probas = ','.join([i] + [str(p) for p in probs.tolist()])
+            f.write(probas)
+            f.write('\n')
+    print("Wrote submission to file {}.".format(fname))
+
+
+print("Loading data...")
+X, labels = load_data('./data/train.csv', train=True)
+X, scaler = preprocess_data(X)
+y, encoder = preprocess_labels(labels)
+
+X_test, ids = load_data('./data/test.csv', train=False)
+X_test, _ = preprocess_data(X_test, scaler)
+
+nb_classes = y.shape[1]
+print(nb_classes, 'classes')
+
+dims = X.shape[1]
+print(dims, 'dims')
+
+print("Building model...")
+
+model = Sequential()
+model.add(Dense(dims, 254, init='glorot_uniform'))
+model.add(PReLU((254,)))
+# model.add(Activation('sigmoid'))
+model.add(BatchNormalization((254,)))
+model.add(Dropout(0.8))
+
+model.add(Dense(254, 512, init='glorot_uniform'))
+model.add(PReLU((512,)))
+model.add(BatchNormalization((512,)))
+# model.add(Dropout(0.3))
+
+model.add(Dense(512, 254, init='glorot_uniform'))
+model.add(PReLU((254,)))
+model.add(BatchNormalization((254,)))
+# model.add(Dropout(0.3))
+
+model.add(Dense(254, nb_classes, init='glorot_uniform'))
+model.add(Activation('softmax'))
+
+op = Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=1e-8, kappa=1-1e-8)
+# op = SGD()
+model.compile(loss='categorical_crossentropy', optimizer=op)
+
+print("Training model...")
+
+model.fit(X, y, nb_epoch=200, batch_size=16, validation_split=0.15)
+
+proba = model.predict_proba(X_test)
+fs = './submission/pickle_keras_13251'
+with open(fs, 'w') as f:
+    pickle.dump(proba, f)
+
+print("Generating submission...")
+make_submission(proba, ids, encoder, fname='./submission/keras-otto-13251.csv')
+
