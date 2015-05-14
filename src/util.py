@@ -15,7 +15,7 @@ def load_data(path, train=True):
     X = df.values.copy()
     if train:
         np.random.shuffle(X) # https://youtu.be/uyUXoap67N8
-        X, labels = X[:, 1:-1].astype(np.float32), X[:, -1]
+        X, labels = X[:, 2:].astype(np.float32), X[:, 0]
         return X, labels
     else:
         X, ids = X[:, 1:].astype(np.float32), X[:, 0].astype(np.int32).astype(str)
@@ -27,15 +27,15 @@ def preprocess_data(X, scaler=None):
     #     scaler.fit(X)
     # X = scaler.transform(X)
 
-    X = np.hstack((X, np.log(X+1.0)))
+    # X = np.hstack((X, np.log(X+1.0)))
     return X, scaler
 
 def preprocess_labels(y, encoder=None, categorical=True):
     if not encoder:
         encoder = LabelEncoder()
     y = encoder.fit_transform(y).astype(np.int32)
-    if categorical:
-        y = np_utils.to_categorical(y)
+    # if categorical:
+    #     y = np_utils.to_categorical(y)
     return y, encoder
 
 def make_submission(y_prob, ids, encoder, fname):
