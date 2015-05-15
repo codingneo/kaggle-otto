@@ -77,7 +77,7 @@ def evaluate_neuralnet(X, y, dims, nb_classes, nfold):
     scv = StratifiedKFold(y, nfold)
 
     best_score = float("inf")
-    for n_hidden in range(400, 600, 50):
+    for n_hidden in range(200, 550, 50):
         nn_model = build_neuralnet(dims, nb_classes, n_hidden, 50)
         score = -cross_val_score(nn_model, X, y, cv=scv, scoring="log_loss")
         print("[" + str(n_hidden) + "] Average score is : " + str(score.mean()))
